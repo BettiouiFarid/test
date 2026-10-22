@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Yes or No?</title>
+  <style>
+    :root { --bg: #fff0f5; --ink: #3b2430; --yes: #ff5c8a; --no: #8a8f9c; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: system-ui, sans-serif; color: var(--ink);
+      background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .card {
+      background: #fff; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,.08);
+      padding: 28px; width: 100%; max-width: 560px;
+    }
+    h1 { font-size: clamp(24px, 5vw, 34px); margin: 0 0 18px; text-align: center; }
+    label { display: block; font-size: 14px; margin: 12px 0 4px; opacity: .8; }
+    input, textarea {
+      width: 100%; padding: 10px; font: inherit; color: inherit;
+      border: 1px solid #e3d6dc; border-radius: 10px;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    .row { display: flex; gap: 10px; }
+    .row > div { flex: 1; }
+    button.primary {
+      font: inherit; width: 100%; margin-top: 16px; padding: 12px; border: 0; border-radius: 999px;
+      background: var(--ink); color: #fff; cursor: pointer;
+    }
+    #out { margin-top: 14px; font-size: 14px; }
+    #out input { font-size: 13px; margin-top: 6px; }
+    .copy { margin-top: 8px; padding: 8px 14px; border: 0; border-radius: 999px; background: var(--yes); color: #fff; font: inherit; cursor: pointer; }
+
+    .q { font-size: clamp(26px, 6vw, 40px); text-align: center; margin: 0 0 6px; line-height: 1.2; }
+    .stage { position: relative; height: 300px; overflow: hidden; }
+    #yes {
+      position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%);
+      display: flex; align-items: center; justify-content: center; white-space: nowrap;
+      border: 0; border-radius: 999px; padding: 0; font: inherit; font-size: 20px;
+      background: var(--yes); color: #fff; cursor: pointer;
+      transition: width .5s ease, height .5s ease, clip-path .6s ease, border-radius .6s ease;
+    }
+    #no {
+      position: absolute; border: 0; border-radius: 999px; padding: 10px 22px; font: inherit; font-size: 17px;
+      background: var(--no); color: #fff; cursor: pointer; transition: left .28s ease, top .28s ease, transform .4s ease;
+      touch-action: none; user-select: none;
+    }
+    #bubble {
+      position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%);
+      background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 14px;
+      font-size: 15px; white-space: nowrap; opacity: 0; transition: opacity .2s; pointer-events: none;
+    }
+    #bubble.show { opacity: 1; }
+    .back { text-align: center; font-size: 13px; margin-top: 10px; }
+    .back a { color: var(--ink); opacity: .6; }
+
+    .celebrate { text-align: center; padding: 30px 0; }
+    .celebrate p { font-size: clamp(28px, 7vw, 44px); margin: 0; }
+    .bit {
+      position: fixed; top: -40px; font-size: 22px; pointer-events: none;
+      animation: fall 2.8s linear forwards;
+    }
+    @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card" id="app"></div>
+
+  <script>
+    const DEFAULTS = {
+      question: 'Qui est ton vrai amoureux ?',
+      bg: '',
+      pic: '',
+      yes: 'Farid',
+      no: 'Youness',
+      yesMessage: 'Saaaajyaaaa',
+      messages: [
+        'Are you sure?',
+        'Khami ghayaa!',
+        'Nope, khata2 😜',
+        'sayer bzzf 3lik!',
+        'Really?',
+        'rabi sabarniiii 🙈',
+        'Still not the right one',
+        'dok naz3af'
+      ]
+    };
+
+    const app = document.getElementById('app');
+    const baseUrl = location.href.split('#')[0];
+
+    // Local pictures from the img folder. The file extension is detected automatically.
+    const IMG_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+    function findImage(base, cb) {
+      let i = 0;
+      const next = () => {
+        if (i >= IMG_EXTS.length) return cb(null);
+        const url = base + IMG_EXTS[i++];
+        const probe = new Image();
+        probe.onload = () => cb(url);
+        probe.onerror = next;
+        probe.src = url;
+      };
+      next();
+    }
+    // Use the link's picture if it has one, otherwise the main background img/BG1.
+    function useBackground(value) {
+      if (value) applyBg(value);
+      else findImage('img/BG1', url => applyBg(url || ''));
+    }
+
+    // Creator login. Only a SHA-256 hash of the password is stored here.
+    // This is a client-side gate: it hides the creator, but the file is public.
+    const ADMIN_USER = 'farid';
+    const ADMIN_HASH = 'fbd479942b34bd361962c69970ecd4f29d9fcaf5c033382343443b4d1c3c1fa2';
+
+    async function sha256(text) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function showLogin(onSuccess) {
+      app.innerHTML = `
+        <h1>Admin login</h1>
+        <label for="lu">Username</label>
+        <input id="lu" autocomplete="username">
+        <label for="lp">Password</label>
+        <input id="lp" type="password" autocomplete="current-password">
+        <button class="primary" id="login">Log in</button>
+        <p id="lerr" style="color:#b03a5b;font-size:14px;min-height:1.2em;margin:10px 0 0"></p>`;
+
+      const err = document.getElementById('lerr');
+      const attempt = async () => {
+        err.textContent = '';
+        try {
+          const user = document.getElementById('lu').value.trim().toLowerCase();
+          const hash = await sha256(document.getElementById('lp').value);
+          if (user === ADMIN_USER && hash === ADMIN_HASH) {
+            try { sessionStorage.setItem('yn-admin', '1'); } catch { /* storage blocked, so ask again next time */ }
+            onSuccess();
+          } else {
+            err.textContent = 'Wrong username or password.';
+          }
+        } catch {
+          err.textContent = 'Login needs the page to be opened over https (or localhost).';
+        }
+      };
+      document.getElementById('login').onclick = attempt;
+      document.getElementById('lp').addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
+    }
+
+    function showCreator() {
+      let loggedIn = false;
+      try { loggedIn = sessionStorage.getItem('yn-admin') === '1'; } catch { /* storage blocked */ }
+      if (loggedIn) renderCreator();
+      else showLogin(renderCreator);
+    }
+
+    // Show a background picture behind the card. Only http(s) addresses are used.
+    function applyBg(value) {
+      let css = '';
+      const v = String(value || '').trim();
+      if (v) {
+        try {
+          const u = new URL(v, location.href);
+          if (['https:', 'http:', 'file:'].includes(u.protocol)) {
+            css = `url("${u.href.replace(/"/g, '%22')}")`;
+          }
+        } catch { /* not a valid address, so ignore it */ }
+      }
+      const b = document.body.style;
+      b.backgroundImage = css ? `linear-gradient(rgba(255,240,245,.55), rgba(255,240,245,.55)), ${css}` : '';
+      b.backgroundSize = css ? 'cover' : '';
+      b.backgroundPosition = css ? 'center' : '';
+      b.backgroundAttachment = css ? 'fixed' : '';
+    }
+
+    function encodeData(d) {
+      return '#' + encodeURIComponent(JSON.stringify(d));
+    }
+
+    function decodeData() {
+      const raw = location.hash.slice(1);
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(decodeURIComponent(raw));
+        return {
+          question: String(parsed.question || DEFAULTS.question),
+          yes: String(parsed.yes || DEFAULTS.yes),
+          no: String(parsed.no || DEFAULTS.no),
+          yesMessage: String(parsed.yesMessage || DEFAULTS.yesMessage),
+          bg: String(parsed.bg || ''),
+          pic: String(parsed.pic || ''),
+          messages: Array.isArray(parsed.messages) && parsed.messages.length
+            ? parsed.messages.map(String)
+            : DEFAULTS.messages
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    // ---------- creator ----------
+    function renderCreator() {
+      app.innerHTML = `
+        <h1>Make your Yes or No page</h1>
+        <label for="q">Question</label>
+        <input id="q" maxlength="200">
+        <div class="row">
+          <div>
+            <label for="y">Yes button text</label>
+            <input id="y" maxlength="30">
+          </div>
+          <div>
+            <label for="n">No button text</label>
+            <input id="n" maxlength="30">
+          </div>
+        </div>
+        <label for="bg">Background picture (web address of an image, optional)</label>
+        <input id="bg" placeholder="https://example.com/photo.jpg" maxlength="500">
+        <label for="pic">Picture shown after the Yes message (web address, optional)</label>
+        <input id="pic" placeholder="https://example.com/photo.jpg" maxlength="500">
+        <label for="ym">Message after they click Yes</label>
+        <input id="ym" maxlength="100">
+        <label for="msgs">Playful messages when they try No (one per line)</label>
+        <textarea id="msgs"></textarea>
+        <button class="primary" id="make">Create link</button>
+        <div id="out"></div>`;
+
+      const $ = id => document.getElementById(id);
+      $('q').value = DEFAULTS.question;
+      $('y').value = DEFAULTS.yes;
+      $('n').value = DEFAULTS.no;
+      $('ym').value = DEFAULTS.yesMessage;
+      $('msgs').value = DEFAULTS.messages.join('\n');
+      $('bg').value = DEFAULTS.bg;
+      $('pic').value = DEFAULTS.pic;
+      $('bg').addEventListener('input', e => applyBg(e.target.value));
+      useBackground($('bg').value);
+
+      $('make').onclick = () => {
+        const messages = $('msgs').value.split('\n').map(s => s.trim()).filter(Boolean);
+        const data = {
+          question: $('q').value.trim() || DEFAULTS.question,
+          yes: $('y').value.trim() || DEFAULTS.yes,
+          no: $('n').value.trim() || DEFAULTS.no,
+          yesMessage: $('ym').value.trim() || DEFAULTS.yesMessage,
+          bg: $('bg').value.trim(),
+          pic: $('pic').value.trim(),
+          messages: messages.length ? messages : DEFAULTS.messages
+        };
+        const url = baseUrl + encodeData(data);
+        $('out').innerHTML = '';
+        const input = document.createElement('input');
+        input.readOnly = true;
+        input.value = url;
+        input.style.width = '100%';
+        input.onclick = () => input.select();
+        const copy = document.createElement('button');
+        copy.className = 'copy';
+        copy.textContent = 'Copy link';
+        copy.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(url);
+            copy.textContent = 'Copied!';
+          } catch {
+            input.select();
+            copy.textContent = 'Select and copy above';
+          }
+        };
+        const open = document.createElement('a');
+        open.href = url;
+        open.textContent = ' Preview →';
+        open.style.marginLeft = '10px';
+        $('out').append(input, document.createElement('br'), copy, open);
+      };
+    }
+
+    // ---------- the game ----------
+    function shuffle(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function showPage(d) {
+      app.innerHTML = `
+        <p class="q"></p>
+        <div class="stage" id="stage">
+          <button id="yes"></button>
+          <button id="no"></button>
+          <div id="bubble"></div>
+        </div>`;
+
+      const stage = document.getElementById('stage');
+      const yes = document.getElementById('yes');
+      const no = document.getElementById('no');
+      const bubble = document.getElementById('bubble');
+
+      app.querySelector('.q').textContent = d.question;
+      useBackground(d.bg);
+      yes.textContent = d.yes;
+      no.textContent = d.no;
+
+      let attempts = 0;
+      let lastDodge = 0;
+      let order = shuffle(d.messages);
+      let msgIndex = 0;
+      let hideTimer = null;
+
+      function yesCenter() {
+        return { x: stage.clientWidth / 2, y: stage.clientHeight * 0.45 };
+      }
+
+      // Starts as a pill. After the first No attempt it becomes the heart shape and keeps growing.
+      const HEART_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#000" d="M12 4.419c-2.826-5.695-11.999-4.064-11.999 3.27 0 7.27 9.903 10.938 11.999 15.311 2.096-4.373 12-8.041 12-15.311 0-7.327-9.17-8.972-12-3.27z"/></svg>';
+      const HEART_MASK = `url("data:image/svg+xml,${encodeURIComponent(HEART_SVG)}")`;
+
+      function setYesScale() {
+        if (attempts === 0) {
+          yes.style.width = '130px';
+          yes.style.height = '60px';
+          yes.style.borderRadius = '999px';
+          yes.style.maskImage = 'none';
+          yes.style.webkitMaskImage = 'none';
+        } else {
+          const size = Math.min(110 + Math.min(attempts, 8) * 18, stage.clientHeight * 0.85);
+          yes.style.width = size + 'px';
+          yes.style.height = size + 'px';
+          yes.style.borderRadius = '0';
+          for (const prop of ['maskImage', 'webkitMaskImage']) {
+            yes.style[prop] = HEART_MASK;
+            yes.style[prop.replace('Image', 'Size')] = 'contain';
+            yes.style[prop.replace('Image', 'Repeat')] = 'no-repeat';
+            yes.style[prop.replace('Image', 'Position')] = 'center';
+          }
+        }
+      }
+
+      function nextMessage() {
+        if (msgIndex >= order.length) {
+          order = shuffle(d.messages);
+          msgIndex = 0;
+        }
+        return order[msgIndex++];
+      }
+
+      function say(text) {
+        bubble.textContent = text;
+        bubble.classList.add('show');
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => bubble.classList.remove('show'), 1800);
+      }
+
+      function dodge() {
+        const now = Date.now();
+        if (now - lastDodge < 350) return;
+        lastDodge = now;
+        attempts++;
+
+        const W = stage.clientWidth;
+        const H = stage.clientHeight;
+        const bw = no.offsetWidth;
+        const bh = no.offsetHeight;
+        const yc = yesCenter();
+
+        // Pick a random spot that is clear of the Yes button and the message bubble
+        let x = 0, y = 0;
+        for (let tries = 0; tries < 30; tries++) {
+          x = Math.random() * Math.max(0, W - bw);
+          y = Math.random() * Math.max(0, H - bh - 50);
+          const dist = Math.hypot(x + bw / 2 - yc.x, y + bh / 2 - yc.y);
+          if (dist > 130 + attempts * 4) break;
+        }
+        no.style.left = x + 'px';
+        no.style.top = y + 'px';
+
+        setYesScale();
+        no.style.transform = `scale(${Math.max(0.2, 1 - attempts * 0.08)})`;
+        bubble.style.fontSize = Math.min(15 + attempts * 2, 36) + 'px';
+        say(nextMessage());
+      }
+
+      function placeInitial() {
+        no.style.left = Math.max(0, stage.clientWidth * 0.62) + 'px';
+        no.style.top = Math.max(0, stage.clientHeight * 0.62) + 'px';
+        setYesScale();
+      }
+
+      // Dodge when the pointer gets close (desktop) or when touched (phones)
+      stage.addEventListener('pointermove', e => {
+        const rect = no.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        if (Math.hypot(e.clientX - cx, e.clientY - cy) < 90) dodge();
+      });
+      no.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        dodge();
+      });
+      no.addEventListener('click', e => e.preventDefault());
+
+      yes.addEventListener('click', () => celebrate(d));
+
+      requestAnimationFrame(placeInitial);
+    }
+
+    function celebrate(d) {
+      app.innerHTML = `
+        <div class="celebrate">
+          <p></p>
+          <button id="showpic" style="margin-top:18px;padding:12px 24px;border:0;border-radius:999px;background:var(--ink);color:#fff;font:inherit;cursor:pointer">Show picture</button>
+          <img id="revealImg" alt="" style="display:none;max-width:100%;border-radius:16px;margin-top:16px">
+        </div>`;
+      app.querySelector('.celebrate p').textContent = d.yesMessage;
+
+      const showBtn = document.getElementById('showpic');
+      const revealImg = document.getElementById('revealImg');
+      const setupReveal = url => {
+        revealImg.src = url;
+        showBtn.onclick = () => {
+          revealImg.style.display = 'block';
+          showBtn.style.display = 'none';
+        };
+      };
+      // Use the link's picture if it has one, otherwise img/img1
+      if (d.pic) setupReveal(d.pic);
+      else findImage('img/img1', url => {
+        if (url) setupReveal(url);
+        else showBtn.style.display = 'none';
+      });
+
+      const emojis = ['🎉', '💖', '✨', '🥳', '🌸'];
+      for (let i = 0; i < 40; i++) {
+        const bit = document.createElement('span');
+        bit.className = 'bit';
+        bit.textContent = emojis[i % emojis.length];
+        bit.style.left = Math.random() * 100 + 'vw';
+        bit.style.animationDelay = Math.random() * 1.2 + 's';
+        document.body.appendChild(bit);
+        setTimeout(() => bit.remove(), 4500);
+      }
+
+    }
+
+    // ---------- start ----------
+    // The game opens directly. The creator is only at ?admin (behind the login).
+    const data = decodeData();
+    if (location.search.includes('admin')) showCreator();
+    else showPage(data || { ...DEFAULTS, messages: [...DEFAULTS.messages] });
+    window.addEventListener('hashchange', () => location.reload());
+  </script>
+</body>
+</html>
