@@ -415,6 +415,7 @@
           <p></p>
           <button id="showpic" style="margin-top:18px;padding:12px 24px;border:0;border-radius:999px;background:var(--ink);color:#fff;font:inherit;cursor:pointer">Show picture</button>
           <img id="revealImg" alt="" style="display:none;max-width:100%;border-radius:16px;margin-top:16px">
+          <a id="followLink" href="https://our-museum.replit.app/" target="_blank" rel="noopener" style="display:none;margin-top:18px;padding:12px 24px;border-radius:999px;background:var(--ink);color:#fff;font:inherit;text-decoration:none">Follow me</a>
           <a id="museumLink" href="https://our-museum.replit.app" target="_blank" rel="noopener" style="display:none;margin-top:18px;padding:12px 24px;border-radius:999px;background:var(--yes);color:#fff;font:inherit;text-decoration:none">Go to our museum</a>
         </div>`;
       app.querySelector('.celebrate p').textContent = d.yesMessage;
@@ -426,6 +427,7 @@
         showBtn.onclick = () => {
           revealImg.style.display = 'block';
           showBtn.style.display = 'none';
+          document.getElementById('followLink').style.display = 'inline-block';
           document.getElementById('museumLink').style.display = 'inline-block';
         };
       };
@@ -435,6 +437,7 @@
         if (url) setupReveal(url);
         else {
           showBtn.style.display = 'none';
+          document.getElementById('followLink').style.display = 'inline-block';
           document.getElementById('museumLink').style.display = 'inline-block';
         }
       });
