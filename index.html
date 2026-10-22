@@ -73,7 +73,7 @@
       bg: '',
       pic: '',
       yes: 'Farid',
-      no: 'Youness',
+      no: 'Younes',
       yesMessage: 'Saaaajyaaaa',
       messages: [
         'Are you sure?',
@@ -415,6 +415,7 @@
           <p></p>
           <button id="showpic" style="margin-top:18px;padding:12px 24px;border:0;border-radius:999px;background:var(--ink);color:#fff;font:inherit;cursor:pointer">Show picture</button>
           <img id="revealImg" alt="" style="display:none;max-width:100%;border-radius:16px;margin-top:16px">
+          <a id="museumLink" href="https://our-museum.replit.app" target="_blank" rel="noopener" style="display:none;margin-top:18px;padding:12px 24px;border-radius:999px;background:var(--yes);color:#fff;font:inherit;text-decoration:none">Go to our museum</a>
         </div>`;
       app.querySelector('.celebrate p').textContent = d.yesMessage;
 
@@ -425,13 +426,17 @@
         showBtn.onclick = () => {
           revealImg.style.display = 'block';
           showBtn.style.display = 'none';
+          document.getElementById('museumLink').style.display = 'inline-block';
         };
       };
       // Use the link's picture if it has one, otherwise img/img1
       if (d.pic) setupReveal(d.pic);
       else findImage('img/img1', url => {
         if (url) setupReveal(url);
-        else showBtn.style.display = 'none';
+        else {
+          showBtn.style.display = 'none';
+          document.getElementById('museumLink').style.display = 'inline-block';
+        }
       });
 
       const emojis = ['🎉', '💖', '✨', '🥳', '🌸'];
